@@ -207,7 +207,7 @@ buildContentHeaders( Contents, ContentType ) ->
      {"Content-Type", ContentType}].
 
 genericRequest( AwsCredentials, Method, Bucket, Path, QueryParams, Contents, ContentType ) ->
-    Date = httpd_util:rfc1123_date(erlang:universaltime()),
+    Date = httpd_util:rfc1123_date(),
     MethodString = string:to_upper( atom_to_list(Method) ),
     Url = buildUrl(Bucket,Path,QueryParams),
 
