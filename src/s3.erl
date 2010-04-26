@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([ start/1,
+-export([ start/1, set_acl/1,
 	  list_buckets/0, create_bucket/1, delete_bucket/1,
 	  list_objects/2, list_objects/1, write_object/4, read_object/2, delete_object/2 ]).
 
@@ -30,6 +30,9 @@
 %%--------------------------------------------------------------------
 start(AwsCredentials) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, AwsCredentials, []).
+
+set_acl(ACL) ->
+     gen_server:call(?MODULE, {set_acl, ACL}).
 
 create_bucket (Name) -> gen_server:call(?MODULE, {put, Name} ).
 delete_bucket (Name) -> gen_server:call(?MODULE, {delete, Name} ).
@@ -72,6 +75,11 @@ init(AwsCredentials) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({set_acl, ACL}, _From, AwsCredentials) ->
+    %% Hack: we shall not use the process dictionary but a state
+    %% record instead.
+    put('x-amz-acl', ACL),
+    {reply, {ok, ACL}, AwsCredentials};
 
 % Bucket operations
 handle_call({listbuckets}, _From, AwsCredentials) ->
@@ -160,8 +168,8 @@ option_to_param( { maxkeys, X } ) ->
 option_to_param( { delimiter, X } ) -> 
     { "delimiter", X }.
 
-getRequest( AwsCredentials, Bucket, Key, Headers ) ->
-    genericRequest( AwsCredentials, get, Bucket, Key, Headers, <<>>, "" ).
+getRequest( AwsCredentials, Bucket, Key, QueryParams ) ->
+    genericRequest( AwsCredentials, get, Bucket, Key, QueryParams, <<>>, "" ).
 putRequest( AwsCredentials, Bucket, Key, Content, ContentType ) ->
     genericRequest( AwsCredentials, put, Bucket, Key, [], Content, ContentType ).
 deleteRequest( AwsCredentials, Bucket, Key ) ->
@@ -211,7 +219,11 @@ genericRequest( AwsCredentials, Method, Bucket, Path, QueryParams, Contents, Con
     MethodString = string:to_upper( atom_to_list(Method) ),
     Url = buildUrl(Bucket,Path,QueryParams),
 
-    OriginalHeaders = buildContentHeaders( Contents, ContentType ),
+    ACLHeaders = case get('x-amz-acl') of
+		     ACL when is_list(ACL) -> [{"x-amz-acl", ACL}];
+		     _ -> []
+		 end,
+    OriginalHeaders = buildContentHeaders( Contents, ContentType ) ++ ACLHeaders,
     ContentMD5 = "",
     Body = Contents,
 

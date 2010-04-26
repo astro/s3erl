@@ -8,6 +8,7 @@ run( AKI, SAK, Bucket ) ->
     Key = "testkey",
 
     {ok, _} = s3:start( Credentials ),
+    s3:set_acl("public-read"),
 
     io:format("Exercising s3erl on bucket ~p~n", [Bucket]),
     io:format("Listing all buckets: ~p~n", [ s3:list_buckets() ] ),
