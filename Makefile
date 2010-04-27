@@ -1,3 +1,5 @@
+all:	clean main
+
 main:	clean
 	erlc -o ebin -I include src/*.erl
 

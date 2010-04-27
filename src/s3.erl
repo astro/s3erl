@@ -21,6 +21,8 @@
 -include_lib("xmerl/include/xmerl.hrl").
 -include("s3.hrl").
 
+-define(TIMEOUT, infinity).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -29,18 +31,18 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start(AwsCredentials) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, AwsCredentials, []).
+    gen_server:start_link(?MODULE, AwsCredentials, []).
 
 create_bucket (Name) -> gen_server:call(?MODULE, {put, Name} ).
 delete_bucket (Name) -> gen_server:call(?MODULE, {delete, Name} ).
 list_buckets ()      -> gen_server:call(?MODULE, {listbuckets}).
 
 write_object (Bucket, Key, Data, ContentType) -> 
-    gen_server:call(?MODULE, {put, Bucket, Key, Data, ContentType}).
+    gen_server:call(?MODULE, {put, Bucket, Key, Data, ContentType}, ?TIMEOUT).
 read_object (Bucket, Key) -> 
-    gen_server:call(?MODULE, {get, Bucket, Key}).
+    gen_server:call(?MODULE, {get, Bucket, Key}, ?TIMEOUT).
 delete_object (Bucket, Key) -> 
-    gen_server:call(?MODULE, {delete, Bucket, Key}).
+    gen_server:call(?MODULE, {delete, Bucket, Key}, ?TIMEOUT).
 
 %% option example: [{delimiter, "/"},{maxresults,10},{prefix,"/foo"}]
 list_objects (Bucket, Options ) -> gen_server:call(?MODULE, {list, Bucket, Options }).
@@ -91,9 +93,13 @@ handle_call({delete, Bucket }, _From, AwsCredentials) ->
 
 % Object operations
 handle_call({put, Bucket, Key, Content, ContentType }, _From, AwsCredentials) ->
+	try
     {Headers,_Body} = putRequest( AwsCredentials,Bucket, Key, Content, ContentType),
-    {value,{"etag",ETag}} = lists:keysearch( "etag", 1, Headers ),
-    {reply, {ok, ETag}, AwsCredentials};
+    {value,{"ETag",ETag}} = lists:keysearch( "ETag", 1, Headers ),
+    {reply, {ok, ETag}, AwsCredentials}
+	catch
+	throw:X -> { reply, X, AwsCredentials }
+	end;
 
 handle_call({ list, Bucket, Options }, _From, AwsCredentials) ->
     Headers = lists:map( fun option_to_param/1, Options ),
@@ -101,7 +107,11 @@ handle_call({ list, Bucket, Options }, _From, AwsCredentials) ->
     {reply, parseBucketListXml(Body), AwsCredentials};
 
 handle_call({ get, Bucket, Key }, _From, AwsCredentials) ->
-    {reply, getRequest( AwsCredentials, Bucket, Key, [] ), AwsCredentials};
+    try
+	{reply, getRequest( AwsCredentials, Bucket, Key, [] ), AwsCredentials}
+    catch
+	throw:X -> { reply, X, AwsCredentials }
+    end;
 
 handle_call({delete, Bucket, Key }, _From, AwsCredentials) ->
     try 
@@ -226,26 +236,34 @@ genericRequest( AwsCredentials, Method, Bucket, Path, QueryParams, Contents, Con
 		{"Date", Date } 
 	       | OriginalHeaders ],
     
-    Request = case Method of
-		  get -> { Url, Headers };
-		  put -> { Url, Headers, ContentType, Body };
-		  delete -> { Url, Headers }
-	      end,
-    HttpOptions = [],
-    Options = [ {sync,true}, {headers_as_is,true} ],
+    %Request = case Method of
+	%	  get -> { Url, Headers };
+	%	  put -> { Url, Headers, ContentType, Body };
+	%	  delete -> { Url, Headers }
+	%      end,
+    %HttpOptions = [],
+    %Options = [ {sync,true}, {headers_as_is,true} ],
 
 %    io:format("Sending request ~p~n", [Request]),
-    Reply = http:request( Method, Request, HttpOptions, Options ),
+    %Reply = http:request( Method, Request, HttpOptions, Options ),
+    Reply = case Method of
+		get -> ibrowse:send_req(Url, Headers, get);
+		put -> ibrowse:send_req(Url, Headers, put, Body, [{content_type, ContentType}]);
+		delete -> ibrowse:send_req(Url, Headers, delete)
+	end,
     
-%    io:format("HTTP reply was ~p~n", [Reply]),
     case Reply of
-	{ok, {{_HttpVersion, Code, _ReasonPhrase}, ResponseHeaders, ResponseBody }} 
-	 when Code=:=200; Code=:=204
+	%{ok, {{_HttpVersion, Code, _ReasonPhrase}, ResponseHeaders, ResponseBody }} 
+	{ok, Code, ResponseHeaders, ResponseBody}
+	 when Code=:="200"; Code=:="204"
 	      -> 
 	    {ResponseHeaders,ResponseBody};
 
-	{ok, {{_HttpVersion, _HttpCode, _ReasonPhrase}, _ResponseHeaders, ResponseBody }} -> 
-	    throw ( parseErrorXml(ResponseBody) )
+	%{ok, {{_HttpVersion, _HttpCode, _ReasonPhrase}, _ResponseHeaders, ResponseBody }} -> 
+	{ok, _Code, _ResponseHeaders, ResponseBody} ->
+	    throw ( parseErrorXml(ResponseBody) );
+	{error, Reason} ->
+		throw ({error, Reason})
     end.
 
 
