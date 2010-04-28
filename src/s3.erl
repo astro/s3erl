@@ -11,15 +11,15 @@
 
 %% API
 -export([ start/1,
-	  list_buckets/0, create_bucket/1, delete_bucket/1,
-	  list_objects/2, list_objects/1, write_object/4, read_object/2, delete_object/2 ]).
+	  list_buckets/1, create_bucket/2, delete_bucket/2,
+	  list_objects/3, list_objects/2, write_object/5, read_object/3, delete_object/3 ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, 
 	 terminate/2, code_change/3]).
 
 -include_lib("xmerl/include/xmerl.hrl").
--include("s3.hrl").
+-include("../include/s3.hrl").
 
 -define(TIMEOUT, infinity).
 
@@ -33,20 +33,20 @@
 start(AwsCredentials) ->
     gen_server:start_link(?MODULE, AwsCredentials, []).
 
-create_bucket (Name) -> gen_server:call(?MODULE, {put, Name} ).
-delete_bucket (Name) -> gen_server:call(?MODULE, {delete, Name} ).
-list_buckets ()      -> gen_server:call(?MODULE, {listbuckets}).
+create_bucket(Pid, Name) -> gen_server:call(Pid, {put, Name} ).
+delete_bucket(Pid, Name) -> gen_server:call(Pid, {delete, Name} ).
+list_buckets(Pid)      -> gen_server:call(Pid, {listbuckets}).
 
-write_object (Bucket, Key, Data, ContentType) -> 
-    gen_server:call(?MODULE, {put, Bucket, Key, Data, ContentType}, ?TIMEOUT).
-read_object (Bucket, Key) -> 
-    gen_server:call(?MODULE, {get, Bucket, Key}, ?TIMEOUT).
-delete_object (Bucket, Key) -> 
-    gen_server:call(?MODULE, {delete, Bucket, Key}, ?TIMEOUT).
+write_object (Pid, Bucket, Key, Data, ContentType) -> 
+    gen_server:call(Pid, {put, Bucket, Key, Data, ContentType}, ?TIMEOUT).
+read_object (Pid, Bucket, Key) -> 
+    gen_server:call(Pid, {get, Bucket, Key}, ?TIMEOUT).
+delete_object (Pid, Bucket, Key) -> 
+    gen_server:call(Pid, {delete, Bucket, Key}, ?TIMEOUT).
 
 %% option example: [{delimiter, "/"},{maxresults,10},{prefix,"/foo"}]
-list_objects (Bucket, Options ) -> gen_server:call(?MODULE, {list, Bucket, Options }).
-list_objects (Bucket) -> list_objects( Bucket, [] ).
+list_objects (Pid, Bucket, Options ) -> gen_server:call(Pid, {list, Bucket, Options }).
+list_objects (Pid, Bucket) -> list_objects( Pid, Bucket, [] ).
 
 
 %%====================================================================
