@@ -9,7 +9,7 @@
 
 %% API
 -export([ list_buckets/0, create_bucket/1, delete_bucket/1,
-	  list_objects/2, list_objects/1, write_object/4, read_object/2, delete_object/2 ]).
+	  list_objects/2, list_objects/1, write_object/4, write_object/5, read_object/2, delete_object/2 ]).
 
 
 -include_lib("xmerl/include/xmerl.hrl").
@@ -23,7 +23,9 @@ delete_bucket (Name) -> do_delete(Name).
 list_buckets ()      -> do_listbuckets().
 
 write_object (Bucket, Key, Data, ContentType) -> 
-    do_put(Bucket, Key, Data, ContentType).
+    write_object (Bucket, Key, Data, ContentType, undefined).
+write_object (Bucket, Key, Data, ContentType, ACL) -> 
+    do_put(Bucket, Key, Data, ContentType, ACL).
 read_object (Bucket, Key) -> 
     do_get(Bucket, Key).
 delete_object (Bucket, Key) -> 
@@ -40,7 +42,7 @@ do_listbuckets() ->
     xmlToBuckets(getRequest( "", "", [] )).
 
 do_put(Bucket) ->
-    {_Headers,_Body} = putRequest( Bucket, "", <<>>, ""),
+    {_Headers,_Body} = putRequest( Bucket, "", <<>>, "", undefined),
     ok.
 
 do_delete(Bucket) ->
@@ -52,15 +54,15 @@ do_delete(Bucket) ->
     end.
 
 % Object operations
-do_put(Bucket, Key, Content, ContentType) ->
-    {Headers,_Body} = putRequest( Bucket, Key, Content, ContentType),
+do_put(Bucket, Key, Content, ContentType, ACL) ->
+    {Headers,_Body} = putRequest( Bucket, Key, Content, ContentType, ACL),
     [ETag | _] = [V || {K, V} <- Headers,
 		       string:to_lower(K) == "etag"],
     {ok, ETag}.
 
 do_list(Bucket, Options) ->
-    Headers = lists:map( fun option_to_param/1, Options ),
-    {_, Body} = getRequest( Bucket, "", Headers ),
+    Params = lists:map( fun option_to_param/1, Options ),
+    {_, Body} = getRequest( Bucket, "", Params ),
     parseBucketListXml(Body).
 
 do_get(Bucket, Key) ->
@@ -88,12 +90,16 @@ option_to_param( { maxkeys, X } ) ->
 option_to_param( { delimiter, X } ) -> 
     { "delimiter", X }.
 
-getRequest( Bucket, Key, Headers ) ->
-    genericRequest( get, Bucket, Key, Headers, <<>>, "" ).
-putRequest( Bucket, Key, Content, ContentType ) ->
-    genericRequest( put, Bucket, Key, [], Content, ContentType ).
+getRequest( Bucket, Key, Params ) ->
+    genericRequest( get, Bucket, Key, Params, [], <<>>, "" ).
+putRequest( Bucket, Key, Content, ContentType, ACL) ->
+    Headers = case ACL of
+		  [_ | _] -> [{"x-amz-acl", ACL}];
+		  _ -> []
+	      end,
+    genericRequest( put, Bucket, Key, [], Headers, Content, ContentType ).
 deleteRequest( Bucket, Key ) ->
-    genericRequest( delete, Bucket, Key, [], <<>>, "" ).
+    genericRequest( delete, Bucket, Key, [], [], <<>>, "" ).
 
 
 isAmzHeader( Header ) -> lists:prefix("x-amz-", Header).
@@ -134,12 +140,12 @@ buildContentHeaders( Contents, ContentType ) ->
     [{"Content-Length", integer_to_list(size(Contents))},
      {"Content-Type", ContentType}].
 
-genericRequest( Method, Bucket, Path, QueryParams, Contents, ContentType ) ->
+genericRequest( Method, Bucket, Path, QueryParams, UserHeaders, Contents, ContentType ) ->
     Date = httpd_util:rfc1123_date(),
     MethodString = string:to_upper( atom_to_list(Method) ),
     Url = buildUrl(Bucket,Path,QueryParams),
 
-    OriginalHeaders = buildContentHeaders( Contents, ContentType ),
+    OriginalHeaders = buildContentHeaders( Contents, ContentType ) ++ UserHeaders,
     ContentMD5 = "",
     Body = Contents,
 
