@@ -207,7 +207,7 @@ parseBucketListXml (Xml) ->
     { ok, lists:map( NodeToRecord, ContentNodes ) }.
 
 parseErrorXml (Xml) ->
-    {XmlDoc, _Rest} = xmerl_scan:string( Xml ),
+    {XmlDoc, _Rest} = xmerl_scan:string( binary_to_list(Xml) ),
     [#xmlText{value=ErrorCode}]    = xmerl_xpath:string("/Error/Code/text()", XmlDoc),
     [#xmlText{value=ErrorMessage}] = xmerl_xpath:string("/Error/Message/text()", XmlDoc),
     { s3error, ErrorCode, ErrorMessage }.
