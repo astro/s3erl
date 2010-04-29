@@ -15,6 +15,8 @@
 -include_lib("xmerl/include/xmerl.hrl").
 -include("s3.hrl").
 
+-define(RETRIES, 3).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -163,7 +165,6 @@ genericRequest( Method, Bucket, Path, QueryParams, UserHeaders, Contents, Conten
 	       | OriginalHeaders ],
     
 %    io:format("Sending request ~p~n", [Request]),
-    {ok, HttpClient} = s3pool:get_worker(),
     Options = case Method of
 		put ->
 		      [{content_type, ContentType}];
@@ -172,10 +173,11 @@ genericRequest( Method, Bucket, Path, QueryParams, UserHeaders, Contents, Conten
 	    end,
     Reply = attempt(
 	      fun() ->
+		      {ok, HttpClient} = s3pool:get_worker(),
 		      ibrowse_http_client:send_req(HttpClient, 
 						   Url, Headers, Method,
 						   Body, Options, 10000)
-	      end, 5),
+	      end, ?RETRIES),
 %    io:format("HTTP reply was ~p~n", [Reply]),
     case Reply of
 	{ok, Code, ResponseHeaders, ResponseBody } 
@@ -220,11 +222,13 @@ xmlToBuckets( {_Headers,Body} ) ->
 
 
 attempt(F, Retries) ->
-    case F() of
+    case (catch F()) of
 	{error, connection_closed} when Retries > 0 ->
 	    attempt(F, Retries - 1);
 	{error, timeout} when Retries > 0 ->
 	    attempt(F, Retries - 1);
+	{'EXIT', Reason} when Retries > 0 ->
+	    exit(Reason);
 	R ->
 	    R
     end.
