@@ -164,16 +164,18 @@ genericRequest( Method, Bucket, Path, QueryParams, UserHeaders, Contents, Conten
     
 %    io:format("Sending request ~p~n", [Request]),
     {ok, HttpClient} = s3pool:get_worker(),
-    Reply = case Method of
+    Options = case Method of
 		put ->
-		    ibrowse_http_client:send_req(HttpClient, 
-						 Url, Headers, Method,
-						 Body, [{content_type, ContentType}], 10000);
+		      [{content_type, ContentType}];
 		_ ->
-		    ibrowse_http_client:send_req(HttpClient, 
-						 Url, Headers, Method,
-						 Body, [{response_format, binary}], 10000)
+		      [{response_format, binary}]
 	    end,
+    Reply = attempt(
+	      fun() ->
+		      ibrowse_http_client:send_req(HttpClient, 
+						   Url, Headers, Method,
+						   Body, Options, 10000)
+	      end, 5),
 %    io:format("HTTP reply was ~p~n", [Reply]),
     case Reply of
 	{ok, Code, ResponseHeaders, ResponseBody } 
@@ -216,3 +218,13 @@ xmlToBuckets( {_Headers,Body} ) ->
     TextNodes       = xmerl_xpath:string("//Bucket/Name/text()", XmlDoc),
     lists:map( fun (#xmlText{value=T}) -> T end, TextNodes).
 
+
+attempt(F, Retries) ->
+    case F() of
+	{error, connection_closed} when Retries > 0 ->
+	    attempt(F, Retries - 1);
+	{error, timeout} when Retries > 0 ->
+	    attempt(F, Retries - 1);
+	R ->
+	    R
+    end.
