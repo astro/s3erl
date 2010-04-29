@@ -145,7 +145,9 @@ genericRequest( Method, Bucket, Path, QueryParams, UserHeaders, Contents, Conten
     MethodString = string:to_upper( atom_to_list(Method) ),
     Url = buildUrl(Bucket,Path,QueryParams),
 
-    OriginalHeaders = buildContentHeaders( Contents, ContentType ) ++ UserHeaders,
+    OriginalHeaders = [{"Connection", "keep-alive"}] ++
+	buildContentHeaders( Contents, ContentType ) ++
+	UserHeaders,
     ContentMD5 = "",
     Body = Contents,
 
