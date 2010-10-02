@@ -1,5 +1,7 @@
 main:	clean
+	mkdir -p ebin
 	erlc -o ebin -I include src/*.erl
+	cp src/*.app ebin/
 
 clean:
 	mkdir -p ebin
