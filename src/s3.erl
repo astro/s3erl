@@ -9,8 +9,10 @@
 
 %% API
 -export([ list_buckets/0, create_bucket/1, delete_bucket/1,
-	  list_objects/2, list_objects/1, write_object/4, write_object/5, read_object/2, delete_object/2 ]).
+	  list_objects/2, list_objects/1, write_object/4, write_object/5, read_object/2, delete_object/2,
+          set_credentials/1]).
 
+-export([s3Host/0]).
 
 -include_lib("xmerl/include/xmerl.hrl").
 -include("s3.hrl").
@@ -20,6 +22,9 @@
 %%====================================================================
 %% API
 %%====================================================================
+set_credentials(Credentials) ->
+    s3pool:set_credentials(Credentials).
+
 create_bucket (Name) -> do_put(Name).
 delete_bucket (Name) -> do_delete(Name).
 list_buckets ()      -> do_listbuckets().

@@ -1,7 +1,7 @@
 -module(s3pool).
 
 %% API
--export([get_credentials/0, get_worker/0, start_link/1, loop/2]).
+-export([get_credentials/0, set_credentials/1, get_worker/0, start_link/1, loop/2]).
 
 -define(SERVER, ?MODULE).
 -define(POOL, s3pool_sup).
@@ -18,7 +18,17 @@ get_credentials() ->
     after 5000 ->
 	    exit(s3pool_timeout)
     end.
-    
+
+set_credentials(Credentials) ->
+    Ref = make_ref(),
+    ?SERVER ! {set_credentials, Ref, self(), Credentials},
+    receive
+	{ok, Ref} ->
+	    ok
+    after 5000 ->
+	    exit(s3pool_timeout)
+    end.
+
 
 get_worker() ->
     Ref = make_ref(),
@@ -29,6 +39,9 @@ get_worker() ->
     after 5000 ->
 	    exit(s3pool_timeout)
     end.
+
+start_link() ->
+    start_link(undefined).
 
 start_link(Credentials) ->
     Pid = spawn_link(fun() ->
@@ -51,9 +64,13 @@ loop(Credentials, []) ->
 
 loop(Credentials, [Worker | Workers]) ->
     receive
+        {set_credentials, Ref, From, NewCredentials} ->
+	    From ! {ok, Ref},
+            loop(NewCredentials, [Worker | Workers]);
 	{credentials, Ref, From} ->
-	    From ! {ok, Ref, Credentials};
+	    From ! {ok, Ref, Credentials},
+            loop(Credentials, Workers);
 	{next, Ref, From} ->
-	    From ! {ok, Ref, Worker}
-    end,
-    loop(Credentials, Workers).
+            From ! {ok, Ref, Worker},
+            loop(Credentials, Workers)
+    end.
